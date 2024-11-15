@@ -1,0 +1,5 @@
+streamlit
+gradio
+newsapi-python
+groq
+python-dotenv
