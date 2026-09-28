@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+
 class NewsAgent:
     def __init__(self):
         # Get API keys from environment variables
@@ -23,6 +25,22 @@ class NewsAgent:
             
         self.groq_client = Groq(api_key=groq_api_key)
         self.newsapi = NewsApiClient(api_key=news_api_key)
+        self.groq_model = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL).strip() or DEFAULT_GROQ_MODEL
+
+    @staticmethod
+    def _valid_articles(articles):
+        """Return consistently shaped articles with the fields the UI needs."""
+        return [
+            {
+                "title": article["title"],
+                "description": article["description"],
+                "url": article["url"],
+                "publishedAt": article["publishedAt"],
+                "source": (article.get("source") or {}).get("name") or "Unknown Source",
+            }
+            for article in articles
+            if all(article.get(key) for key in ("title", "description", "url", "publishedAt"))
+        ]
         
     def fetch_news(self, category, num_articles=5):
         """Fetch real-time news articles from NewsAPI."""
@@ -35,25 +53,13 @@ class NewsAgent:
             )
             
             if response['status'] == 'ok':
-                articles = response['articles']
-                # Filter out articles with missing fields
-                valid_articles = []
-                for article in articles:
-                    if all(key in article and article[key] for key in ['title', 'description', 'url', 'publishedAt']):
-                        valid_articles.append({
-                            'title': article['title'],
-                            'description': article['description'],
-                            'url': article['url'],
-                            'publishedAt': article['publishedAt'],
-                            'source': article.get('source', {}).get('name', 'Unknown Source')
-                        })
-                return valid_articles
+                return self._valid_articles(response.get('articles', []))
             else:
                 print(f"Error fetching news: {response.get('message', 'Unknown error')}")
                 return []
                 
         except Exception as e:
-            print(f"Error fetching news: {str(e)}")
+            print(f"Error fetching news: {type(e).__name__}")
             return []
 
     def summarize_article(self, text):
@@ -65,14 +71,14 @@ class NewsAgent:
         
         try:
             response = self.groq_client.chat.completions.create(
-                model="mixtral-8x7b-32768",
+                model=self.groq_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.5,
                 max_tokens=100,
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            return f"Error generating summary: {str(e)}"
+            return "Summary unavailable. Please try again later."
 
     def categorize_article(self, title, description):
         """Categorize article using Groq API."""
@@ -83,7 +89,7 @@ class NewsAgent:
         
         try:
             response = self.groq_client.chat.completions.create(
-                model="mixtral-8x7b-32768",
+                model=self.groq_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=50,
@@ -94,10 +100,13 @@ class NewsAgent:
 
     def get_recommendations(self, user_preferences):
         """Generate personalized news recommendations."""
-        recent_history = [
-            h for h in user_preferences['reading_history']
-            if datetime.fromisoformat(h['timestamp']) > datetime.now() - timedelta(days=7)
-        ]
+        recent_history = []
+        for item in user_preferences.get('reading_history', []):
+            try:
+                if datetime.fromisoformat(item['timestamp']) > datetime.now() - timedelta(days=7):
+                    recent_history.append(item)
+            except (KeyError, TypeError, ValueError):
+                continue
         
         if not recent_history:
             # Default categories if no history
@@ -134,22 +143,11 @@ class NewsAgent:
             )
             
             if response['status'] == 'ok':
-                articles = response['articles']
-                valid_articles = []
-                for article in articles:
-                    if all(key in article and article[key] for key in ['title', 'description', 'url', 'publishedAt']):
-                        valid_articles.append({
-                            'title': article['title'],
-                            'description': article['description'],
-                            'url': article['url'],
-                            'publishedAt': article['publishedAt'],
-                            'source': article.get('source', {}).get('name', 'Unknown Source')
-                        })
-                return valid_articles
+                return self._valid_articles(response.get('articles', []))
             else:
                 print(f"Error searching news: {response.get('message', 'Unknown error')}")
                 return []
                 
         except Exception as e:
-            print(f"Error searching news: {str(e)}")
+            print(f"Error searching news: {type(e).__name__}")
             return []

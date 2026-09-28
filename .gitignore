@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+user_prefs_*.json
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+venv/

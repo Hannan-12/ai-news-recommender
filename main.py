@@ -3,6 +3,8 @@ import gradio as gr
 from agent import NewsAgent
 from datetime import datetime
 import json
+import os
+from html import escape
 
 def load_user_preferences(user_id='default'):
     try:
@@ -37,15 +39,17 @@ def fetch_and_process_news(category, num_articles=5):
     return processed_articles
 
 def create_article_html(articles):
+    if not articles:
+        return "<div style='padding: 20px;'>No articles found. Check your API key or try again later.</div>"
     html = "<div style='padding: 20px;'>"
     for i, article in enumerate(articles, 1):
         html += f"""
         <div style='margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;'>
-            <h3 style='color: #2a9fd6;'>{i}. {article['title']}</h3>
-            <p><strong>Category:</strong> {article['category']}</p>
-            <p><strong>Summary:</strong> {article['summary']}</p>
-            <p><strong>Published:</strong> {article['published_at']}</p>
-            <a href='{article['url']}' target='_blank' style='
+            <h3 style='color: #2a9fd6;'>{i}. {escape(str(article['title']))}</h3>
+            <p><strong>Category:</strong> {escape(str(article['category']))}</p>
+            <p><strong>Summary:</strong> {escape(str(article['summary']))}</p>
+            <p><strong>Published:</strong> {escape(str(article['published_at']))}</p>
+            <a href='{escape(str(article['url']), quote=True)}' target='_blank' rel='noopener noreferrer' style='
                 display: inline-block;
                 padding: 8px 16px;
                 background-color: #2a9fd6;
@@ -60,16 +64,18 @@ def create_article_html(articles):
     return html
 
 def create_recommendations_html(recommendations):
+    if not recommendations:
+        return "<div style='padding: 20px;'>No recommendations available yet. Fetch news to build your reading history.</div>"
     html = "<div style='padding: 20px;'>"
     html += "<h2>Recommended Articles</h2>"
     for i, rec in enumerate(recommendations, 1):
         html += f"""
         <div style='margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;'>
-            <h3 style='color: #2a9fd6;'>{i}. {rec['title']}</h3>
-            <p><strong>Category:</strong> {rec['category']}</p>
-            <p><strong>Summary:</strong> {rec['summary']}</p>
-            <p><strong>Why:</strong> {rec['reason']}</p>
-            <a href='{rec['url']}' target='_blank' style='
+            <h3 style='color: #2a9fd6;'>{i}. {escape(str(rec['title']))}</h3>
+            <p><strong>Category:</strong> {escape(str(rec['category']))}</p>
+            <p><strong>Summary:</strong> {escape(str(rec['summary']))}</p>
+            <p><strong>Why:</strong> {escape(str(rec['reason']))}</p>
+            <a href='{escape(str(rec['url']), quote=True)}' target='_blank' rel='noopener noreferrer' style='
                 display: inline-block;
                 padding: 8px 16px;
                 background-color: #2a9fd6;
@@ -97,10 +103,10 @@ def get_recommendations(user_id='default'):
     return agent.get_recommendations(prefs)
 
 def create_interface():
-    with gr.Blocks(title="News Recommendation System", theme=gr.themes.Base()) as interface:
+    with gr.Blocks(title="AI News Recommender", theme=gr.themes.Base()) as interface:
         gr.HTML("""
             <div style='text-align: center; padding: 20px;'>
-                <h1 style='color: #2a9fd6;'>📰 News Recommendation System</h1>
+                <h1 style='color: #2a9fd6;'>📰 AI News Recommender</h1>
             </div>
         """)
         
@@ -127,12 +133,18 @@ def create_interface():
                 recommendations_output = gr.HTML(label="Recommended Articles")
 
         def fetch_news(category, num):
-            articles = fetch_and_process_news(category, num)
-            return create_article_html(articles)
+            try:
+                articles = fetch_and_process_news(category, num)
+                return create_article_html(articles)
+            except Exception as exc:
+                return f"<div style='padding: 20px;'>Unable to fetch news ({escape(type(exc).__name__)}). Check configuration and try again.</div>"
 
         def get_personal_recommendations():
-            recommendations = get_recommendations()
-            return create_recommendations_html(recommendations)
+            try:
+                recommendations = get_recommendations()
+                return create_recommendations_html(recommendations)
+            except Exception as exc:
+                return f"<div style='padding: 20px;'>Unable to load recommendations ({escape(type(exc).__name__)}). Check configuration and try again.</div>"
 
         fetch_button.click(
             fetch_news,
@@ -162,4 +174,7 @@ def create_interface():
 
 if __name__ == "__main__":
     interface = create_interface()
-    interface.launch()
+    interface.launch(
+        server_name=os.getenv("HOST") or "0.0.0.0",
+        server_port=int(os.getenv("PORT") or "7861"),
+    )
